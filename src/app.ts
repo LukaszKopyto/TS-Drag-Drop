@@ -82,69 +82,89 @@ function autobind(_: any, _2: string, descriptor: PropertyDescriptor) {
 	return adjMethod;
 }
 
-class ProjectList {
+abstract class Component<T extends HTMLElement, U extends HTMLElement> {
 	templateElement: HTMLTemplateElement;
-	hostElement: HTMLDivElement;
-	element: HTMLElement;
+	hostElement: T;
+	element: U;
+	protected constructor(templateId: string, hostElementId: string, insertAtStart: Boolean, newElementId?: string) {
+		this.templateElement = document.getElementById(templateId)! as HTMLTemplateElement;
+		this.hostElement = document.getElementById(hostElementId)! as T;
+		const importedNode = document.importNode(this.templateElement.content, true);
+		this.element = importedNode.firstElementChild as U;
+		if (newElementId) {
+			this.element.id = newElementId;
+		}
+		this.attach(insertAtStart);
+	}
+
+	private attach(insertAtStart: Boolean) {
+		this.hostElement.insertAdjacentElement((insertAtStart ? 'afterbegin' : 'beforeend'), this.element)
+	}
+	abstract configure(): void;
+	abstract renderContent(): void;
+}
+
+class ProjectList extends Component<HTMLDivElement, HTMLElement>{
 	assignedProjects: Project[];
 
 	constructor(private type: 'active' | 'finished') {
-		this.templateElement = document.getElementById('project-list')! as HTMLTemplateElement;
-		this.hostElement = document.getElementById('app')! as HTMLDivElement;
+		super('project-list', 'app', false, `${type}-projects` )
 		this.assignedProjects = [];
 
-		const importedNode = document.importNode(this.templateElement.content, true);
-		this.element = importedNode.firstElementChild as HTMLElement;
-		this.element.id = `${this.type}-projects`;
+		this.configure();
+		this.renderContent();
+	}
+
+	configure() {
 		projectState.addListeners((projects: Project[]) => {
-			this.assignedProjects = projects;
+			const relevantProjects = projects.filter(prj => {
+				if (this.type === 'active') {
+					return prj.status === ProjectStatus.Active
+				}
+				return prj.status === ProjectStatus.Finished
+			})
+			this.assignedProjects = relevantProjects;
 			this.renderProjects()
 		})
-		this.attach();
-		this.renderContent();
+	}
+
+	renderContent() {
+		this.element.querySelector('ul')!.id = `${this.type}-projects-list`;
+		this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + 'PROJECTS'
 	}
 
 	private renderProjects() {
 		const listEl = document.getElementById(`${this.type}-projects-list`)! as HTMLUListElement;
+		listEl.innerHTML = '';
 		for (const projectItem of this.assignedProjects) {
 			const listItem = document.createElement('li');
 			listItem.textContent = projectItem.title;
 			listEl.appendChild(listItem)
 		}
 	}
-
-	private renderContent() {
-		this.element.querySelector('ul')!.id = `${this.type}-projects-list`;
-		this.element.querySelector('h2')!.textContent = this.type.toUpperCase() + 'PROJECTS'
-	}
-
-	private attach() {
-		this.hostElement.insertAdjacentElement('beforeend', this.element)
-	}
 }
 
-class ProjectInput {
-	templateElement: HTMLTemplateElement;
-	hostElement: HTMLDivElement;
-	element: HTMLElement;
+class ProjectInput extends Component<HTMLDivElement, HTMLElement>{
 	titleInput: HTMLInputElement;
 	descriptionInput: HTMLInputElement;
 	peopleInput: HTMLInputElement;
 
 	constructor() {
-		this.templateElement = document.getElementById('project-input')! as HTMLTemplateElement;
-		this.hostElement = document.getElementById('app')! as HTMLDivElement;
-
-		const importedNode = document.importNode(this.templateElement.content, true);
-		this.element = importedNode.firstElementChild as HTMLFormElement;
-		this.element.id = 'user-input'
+		super('project-input', 'app', true, 'user-input');
 
 		this.titleInput = this.element.querySelector('#title') as HTMLInputElement;
 		this.descriptionInput = this.element.querySelector('#description') as HTMLInputElement;
 		this.peopleInput = this.element.querySelector('#people') as HTMLInputElement;
 
 		this.configure();
-		this.attach();
+		this.renderContent();
+	}
+
+	configure() {
+		this.element.addEventListener('submit', this.submitHandler);
+	}
+
+	renderContent() {
 	}
 
 	private gatherUserInput(): [string, string, number] | void {
@@ -194,14 +214,6 @@ class ProjectInput {
 			projectState.addProject(title, desc, people);
 			this.clearInputs();
 		}
-	}
-
-	private configure() {
-		this.element.addEventListener('submit', this.submitHandler);
-	}
-
-	private attach() {
-		this.hostElement.insertAdjacentElement('afterbegin', this.element)
 	}
 }
 
